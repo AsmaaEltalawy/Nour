@@ -65,13 +65,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!_formKey.currentState!.validate()) return;
 
-    if (_viewModel.onSignIn == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Connect your sign-in logic here.')),
-      );
-      return;
-    }
-
     final error = await _viewModel.signIn();
     if (error != null) {
       if (!mounted) return;

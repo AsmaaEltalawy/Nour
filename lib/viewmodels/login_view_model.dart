@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:nour/services/auth_service.dart';
 
 class LoginViewModel extends ChangeNotifier {
   LoginViewModel({this.onSignIn, this.onSignUp, this.onForgotPassword});
@@ -29,14 +30,11 @@ class LoginViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Sign in using the supplied authentication callback.
+  /// Sign in using the injected callback or the application's auth service.
   ///
-  /// Returns null on success or when no callback is configured.
-  /// Returns the caught error if authentication fails.
+  /// Returns null on success and the caught error if authentication fails.
   Future<Object?> signIn() async {
-    final callback = onSignIn;
-
-    if (callback == null || isLoading) {
+    if (isLoading) {
       return null;
     }
 
@@ -44,7 +42,14 @@ class LoginViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await callback(emailController.text.trim(), passwordController.text);
+      if (onSignIn != null) {
+        await onSignIn!(emailController.text.trim(), passwordController.text);
+      } else {
+        await AuthService.signIn(
+          email: emailController.text.trim(),
+          password: passwordController.text,
+        );
+      }
 
       return null;
     } catch (error) {

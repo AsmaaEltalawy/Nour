@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:nour/services/auth_service.dart';
+import 'package:nour/viewmodels/home_view_model.dart';
+
+import 'splash_screen.dart';
 
 const Color nourTeal = Color(0xFF055F67);
 const Color nourSage = Color(0xFF9EB998);
@@ -6,14 +11,6 @@ const Color nourCream = Color(0xFFEDEDDD);
 const Color nourGreen = Color(0xFF67917D);
 const Color nourDark = Color(0xFF0A393C);
 const Color nourBackground = Color(0xFFFCFCF9);
-
-class Customer {
-  String name;
-  String email;
-  String phone;
-
-  Customer({required this.name, required this.email, required this.phone});
-}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,50 +21,24 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController searchController = TextEditingController();
+  late final HomeViewModel _viewModel;
 
-  String searchQuery = '';
-  int selectedPage = 1;
-  int addedCustomers = 0;
-
-  final List<Customer> customers = [
-    Customer(
-      name: 'Amelia Johnson',
-      email: 'amelia.johnson@email.com',
-      phone: '(555) 123-4567',
-    ),
-    Customer(
-      name: 'Noah Williams',
-      email: 'noah.williams@email.com',
-      phone: '(555) 234-5678',
-    ),
-    Customer(
-      name: 'Olivia Brown',
-      email: 'olivia.brown@email.com',
-      phone: '(555) 345-6789',
-    ),
-    Customer(
-      name: 'Ethan Davis',
-      email: 'ethan.davis@email.com',
-      phone: '(555) 456-7890',
-    ),
-  ];
-
-  List<Customer> get filteredCustomers {
-    final query = searchQuery.toLowerCase().trim();
-
-    if (query.isEmpty) return customers;
-
-    return customers.where((customer) {
-      return customer.name.toLowerCase().contains(query) ||
-          customer.email.toLowerCase().contains(query) ||
-          customer.phone.contains(query);
-    }).toList();
+  @override
+  void initState() {
+    super.initState();
+    _viewModel = HomeViewModel()..addListener(_refresh);
   }
 
   @override
   void dispose() {
+    _viewModel.removeListener(_refresh);
+    _viewModel.dispose();
     searchController.dispose();
     super.dispose();
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -124,7 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
         border: Border(right: BorderSide(color: nourSage.withOpacity(0.15))),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(22, 24, 12, 55),
@@ -159,11 +130,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           _sidebarItem(icon: Icons.home_rounded, title: 'Home', index: 0),
-          _sidebarItem(
-            icon: Icons.groups_rounded,
-            title: 'Customers',
-            index: 1,
-          ),
+          _sidebarItem(icon: Icons.groups_rounded, title: 'Clients', index: 1),
           _sidebarItem(
             icon: Icons.person_outline_rounded,
             title: 'Profile',
@@ -179,23 +146,13 @@ class _HomeScreenState extends State<HomeScreen> {
     required String title,
     required int index,
   }) {
-    final selected = selectedPage == index;
+    final selected = _viewModel.selectedPage == index;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
       child: InkWell(
         borderRadius: BorderRadius.circular(15),
-        onTap: () {
-          setState(() => selectedPage = index);
-
-          if (index == 2) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Profile screen is not connected yet.'),
-              ),
-            );
-          }
-        },
+        onTap: () => _viewModel.selectPage(index),
         child: Container(
           height: 43,
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -242,18 +199,22 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 _buildTopBar(),
                 const SizedBox(height: 24),
-                _buildWelcome(isDesktop),
-                const SizedBox(height: 24),
-                _buildSummaryAndAdd(isDesktop),
-                const SizedBox(height: 16),
-                _buildSearch(),
-                const SizedBox(height: 20),
-                _buildCustomerHeading(),
-                const SizedBox(height: 10),
-                if (isDesktop)
-                  _buildCustomerTable()
-                else
-                  _buildMobileCustomerList(),
+                if (_viewModel.selectedPage == HomeViewModel.profilePage)
+                  _buildProfileContent()
+                else ...[
+                  _buildWelcome(isDesktop),
+                  const SizedBox(height: 24),
+                  _buildSummaryAndAdd(isDesktop),
+                  const SizedBox(height: 16),
+                  _buildSearch(),
+                  const SizedBox(height: 20),
+                  _buildClientHeading(),
+                  const SizedBox(height: 10),
+                  if (isDesktop)
+                    _buildClientTable(isDesktop: true)
+                  else
+                    _buildMobileClientList(),
+                ],
               ],
             ),
           ),
@@ -293,25 +254,141 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         const SizedBox(width: 12),
-        Container(
-          width: 39,
-          height: 39,
-          alignment: Alignment.center,
-          decoration: const BoxDecoration(
-            color: nourSage,
-            shape: BoxShape.circle,
-          ),
-          child: const Text(
-            'SP',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-            ),
-          ),
+        PopupMenuButton<String>(
+          tooltip: 'Account menu',
+          onSelected: (value) {
+            if (value == 'profile') {
+              _viewModel.selectPage(HomeViewModel.profilePage);
+            } else if (value == 'logout') {
+              _confirmLogout();
+            }
+          },
+          itemBuilder: (context) => const [
+            PopupMenuItem(value: 'profile', child: Text('Profile')),
+            PopupMenuItem(value: 'logout', child: Text('Log out')),
+          ],
+          child: _buildAvatar(39),
         ),
       ],
     );
+  }
+
+  Widget _buildAvatar(double size) {
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(color: nourSage, shape: BoxShape.circle),
+      child: const Text(
+        'SP',
+        style: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileContent() {
+    final email = AuthService.currentUser?.email ?? 'Signed-in client';
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Card(
+          color: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: nourSage.withOpacity(0.20)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Profile',
+                  style: TextStyle(
+                    color: nourTeal,
+                    fontSize: 25,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    _buildAvatar(58),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        email,
+                        style: TextStyle(
+                          color: nourDark,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 28),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _confirmLogout,
+                    icon: const Icon(Icons.logout_rounded),
+                    label: const Text('Log out'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: nourTeal,
+                      side: const BorderSide(color: nourTeal),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmLogout() async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Log out?'),
+        content: const Text('Are you sure you want to log out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Log out'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout != true || !mounted) return;
+
+    final error = await _viewModel.logout();
+    if (error == null) {
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => const SplashScreen()),
+        (_) => false,
+      );
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to log out. Please try again.')),
+      );
+    }
   }
 
   Widget _buildWelcome(bool isDesktop) {
@@ -330,7 +407,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 5),
           Text(
-            'Manage your customers',
+            'Manage your clients',
             style: TextStyle(
               color: nourTeal,
               fontSize: isDesktop ? 28 : 23,
@@ -340,7 +417,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Keep all your customer information organized in one place.',
+            'Keep all your client information organized in one place.',
             style: TextStyle(
               color: nourGreen,
               fontSize: 12,
@@ -352,16 +429,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildPlantDecoration(double size) {
-    return Image.asset(
-      'lib/assets/images/Nour customer management home screen.png',
-      width: size,
-      height: size,
-      fit: BoxFit.contain,
-      alignment: Alignment.bottomRight,
-    );
-  }
-
   // SUMMARY AND ADD BUTTON
 
   Widget _buildSummaryAndAdd(bool isDesktop) {
@@ -370,10 +437,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final addButton = SizedBox(
       height: 42,
       child: ElevatedButton.icon(
-        onPressed: () => _showCustomerDialog(),
+        onPressed: () => _showClientDialog(),
         icon: const Icon(Icons.add_circle_rounded, size: 21),
         label: const Text(
-          'Add New Customer',
+          'Add New Client',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
         ),
         style: ElevatedButton.styleFrom(
@@ -434,8 +501,8 @@ class _HomeScreenState extends State<HomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${128 + addedCustomers}',
-                style: const TextStyle(
+                '${_viewModel.clients.length}',
+                style: TextStyle(
                   color: nourTeal,
                   fontSize: 21,
                   fontWeight: FontWeight.bold,
@@ -443,7 +510,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const Text(
-                'Total customers',
+                'Total clients',
                 style: TextStyle(
                   color: nourDark,
                   fontSize: 12,
@@ -483,12 +550,10 @@ class _HomeScreenState extends State<HomeScreen> {
       height: 39,
       child: TextField(
         controller: searchController,
-        onChanged: (value) {
-          setState(() => searchQuery = value);
-        },
+        onChanged: _viewModel.setSearchQuery,
         style: const TextStyle(color: nourDark, fontSize: 12),
         decoration: InputDecoration(
-          hintText: 'Search customers',
+          hintText: 'Search clients',
           hintStyle: TextStyle(
             color: nourDark.withOpacity(0.35),
             fontSize: 11,
@@ -502,7 +567,7 @@ class _HomeScreenState extends State<HomeScreen> {
           suffixIcon: IconButton(
             onPressed: () {
               searchController.clear();
-              setState(() => searchQuery = '');
+              _viewModel.setSearchQuery('');
             },
             icon: const Icon(Icons.cancel_outlined, color: nourSage, size: 18),
           ),
@@ -524,12 +589,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // CUSTOMER SECTION
 
-  Widget _buildCustomerHeading() {
+  Widget _buildClientHeading() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Customers',
+          'Clients',
           style: TextStyle(
             color: nourDark,
             fontSize: 16,
@@ -538,8 +603,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 3),
         Text(
-          '${filteredCustomers.length} matching customers',
-          style: const TextStyle(
+          '${_viewModel.filteredClients.length} matching clients',
+          style: TextStyle(
             color: nourGreen,
             fontSize: 11,
             fontWeight: FontWeight.w600,
@@ -551,8 +616,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // DESKTOP TABLE
 
-  Widget _buildCustomerTable() {
-    final list = filteredCustomers;
+  Widget _buildClientTable({bool isDesktop = false}) {
+    final list = _viewModel.filteredClients;
+
+    if (_viewModel.isLoadingClients) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(30),
+          child: CircularProgressIndicator(color: nourTeal),
+        ),
+      );
+    }
+
+    if (_viewModel.clientsError != null) {
+      return _buildClientError();
+    }
 
     return Container(
       width: double.infinity,
@@ -570,52 +648,59 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Column(
         children: [
-          _buildTableHeader(),
+          _buildTableHeader(isDesktop: isDesktop),
           if (list.isEmpty)
             const Padding(
               padding: EdgeInsets.all(30),
               child: Text(
-                'No customers found',
+                'No clients found',
                 style: TextStyle(color: nourGreen),
               ),
             )
           else
             ...List.generate(
               list.length,
-              (index) => _buildTableRow(list[index], index),
+              (index) =>
+                  _buildTableRow(list[index], index, isDesktop: isDesktop),
             ),
         ],
       ),
     );
   }
 
-  Widget _buildTableHeader() {
+  Widget _buildClientError() {
+    return Center(
+      child: Column(
+        children: [
+          Text(
+            _viewModel.clientsError!,
+            style: const TextStyle(color: nourGreen),
+          ),
+          TextButton(
+            onPressed: _viewModel.loadClients,
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTableHeader({bool isDesktop = false}) {
     return Container(
-      height: 32,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      height: isDesktop ? 48 : 32,
+      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 22 : 16),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: nourSage.withOpacity(0.18))),
       ),
-      child: const Row(
+      child: Row(
         children: [
           Expanded(
             flex: 4,
             child: Text(
-              'Customer',
+              'Client',
               style: TextStyle(
                 color: nourGreen,
-                fontSize: 9,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 4,
-            child: Text(
-              'Email',
-              style: TextStyle(
-                color: nourGreen,
-                fontSize: 9,
+                fontSize: isDesktop ? 12 : 9,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -623,10 +708,32 @@ class _HomeScreenState extends State<HomeScreen> {
           Expanded(
             flex: 3,
             child: Text(
-              'Phone',
+              'Age',
               style: TextStyle(
                 color: nourGreen,
-                fontSize: 9,
+                fontSize: isDesktop ? 12 : 9,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              'Number',
+              style: TextStyle(
+                color: nourGreen,
+                fontSize: isDesktop ? 12 : 9,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              'Weight',
+              style: TextStyle(
+                color: nourGreen,
+                fontSize: isDesktop ? 12 : 9,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -638,7 +745,7 @@ class _HomeScreenState extends State<HomeScreen> {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: nourGreen,
-                fontSize: 9,
+                fontSize: isDesktop ? 12 : 9,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -648,10 +755,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildTableRow(Customer customer, int index) {
+  Widget _buildTableRow(Client client, int index, {bool isDesktop = false}) {
     return Container(
-      height: 41,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      height: isDesktop ? 64 : 41,
+      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 22 : 16),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: nourSage.withOpacity(0.14))),
       ),
@@ -661,15 +768,15 @@ class _HomeScreenState extends State<HomeScreen> {
             flex: 4,
             child: Row(
               children: [
-                _avatar(customer.name, index, size: 29),
-                const SizedBox(width: 13),
+                _avatar(client.name, index, size: isDesktop ? 40 : 29),
+                SizedBox(width: isDesktop ? 16 : 13),
                 Expanded(
                   child: Text(
-                    customer.name,
+                    client.name,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: nourDark,
-                      fontSize: 11,
+                      fontSize: isDesktop ? 14 : 11,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -678,13 +785,13 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           Expanded(
-            flex: 4,
+            flex: 3,
             child: Text(
-              customer.email,
+              client.age,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 color: nourGreen,
-                fontSize: 11,
+                fontSize: isDesktop ? 14 : 11,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -692,11 +799,23 @@ class _HomeScreenState extends State<HomeScreen> {
           Expanded(
             flex: 3,
             child: Text(
-              customer.phone,
+              client.number,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 color: nourGreen,
-                fontSize: 11,
+                fontSize: isDesktop ? 14 : 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              client.weight,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: nourGreen,
+                fontSize: isDesktop ? 14 : 11,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -704,18 +823,18 @@ class _HomeScreenState extends State<HomeScreen> {
           SizedBox(
             width: 55,
             child: PopupMenuButton<String>(
-              tooltip: 'Customer actions',
+              tooltip: 'Client actions',
               padding: EdgeInsets.zero,
-              icon: const Icon(
+              icon: Icon(
                 Icons.more_horiz_rounded,
                 color: nourGreen,
-                size: 19,
+                size: isDesktop ? 24 : 19,
               ),
               onSelected: (value) {
                 if (value == 'edit') {
-                  _showCustomerDialog(customer: customer);
+                  _showClientDialog(client: client);
                 } else if (value == 'delete') {
-                  _confirmDelete(customer);
+                  _confirmDelete(client);
                 }
               },
               itemBuilder: (context) => const [
@@ -731,14 +850,25 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // MOBILE CUSTOMER LIST
 
-  Widget _buildMobileCustomerList() {
-    final list = filteredCustomers;
+  Widget _buildMobileClientList() {
+    if (_viewModel.isLoadingClients) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(30),
+          child: CircularProgressIndicator(color: nourTeal),
+        ),
+      );
+    }
+
+    if (_viewModel.clientsError != null) return _buildClientError();
+
+    final list = _viewModel.filteredClients;
 
     if (list.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(30),
         child: Center(
-          child: Text('No customers found', style: TextStyle(color: nourGreen)),
+          child: Text('No clients found', style: TextStyle(color: nourGreen)),
         ),
       );
     }
@@ -754,7 +884,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildMobileCard(Customer customer, int index) {
+  Widget _buildMobileCard(Client client, int index) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -764,15 +894,15 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Row(
         children: [
-          _avatar(customer.name, index, size: 40),
+          _avatar(client.name, index, size: 40),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  customer.name,
-                  style: const TextStyle(
+                  client.name,
+                  style: TextStyle(
                     color: nourTeal,
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
@@ -780,11 +910,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  customer.email,
+                  'Age: ${client.age}',
                   style: const TextStyle(color: nourGreen, fontSize: 10),
                 ),
                 Text(
-                  customer.phone,
+                  'Number: ${client.number}  •  Weight: ${client.weight}',
                   style: const TextStyle(color: nourGreen, fontSize: 10),
                 ),
               ],
@@ -793,9 +923,9 @@ class _HomeScreenState extends State<HomeScreen> {
           PopupMenuButton<String>(
             onSelected: (value) {
               if (value == 'edit') {
-                _showCustomerDialog(customer: customer);
+                _showClientDialog(client: client);
               } else if (value == 'delete') {
-                _confirmDelete(customer);
+                _confirmDelete(client);
               }
             },
             itemBuilder: (context) => const [
@@ -839,13 +969,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ADD AND EDIT CUSTOMER
 
-  void _showCustomerDialog({Customer? customer}) {
-    final isEditing = customer != null;
+  void _showClientDialog({Client? client}) {
+    final isEditing = client != null;
     final formKey = GlobalKey<FormState>();
 
-    final nameController = TextEditingController(text: customer?.name ?? '');
-    final emailController = TextEditingController(text: customer?.email ?? '');
-    final phoneController = TextEditingController(text: customer?.phone ?? '');
+    final nameController = TextEditingController(text: client?.name ?? '');
+    final ageController = TextEditingController(text: client?.age ?? '');
+    final numberController = TextEditingController(text: client?.number ?? '');
+    final weightController = TextEditingController(text: client?.weight ?? '');
 
     showDialog<void>(
       context: context,
@@ -856,11 +987,8 @@ class _HomeScreenState extends State<HomeScreen> {
             borderRadius: BorderRadius.circular(22),
           ),
           title: Text(
-            isEditing ? 'Edit Customer' : 'Add New Customer',
-            style: const TextStyle(
-              color: nourDark,
-              fontWeight: FontWeight.bold,
-            ),
+            isEditing ? 'Edit Client' : 'Add New Client',
+            style: TextStyle(color: nourDark, fontWeight: FontWeight.bold),
           ),
           content: Form(
             key: formKey,
@@ -872,9 +1000,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     _dialogField(nameController, 'Full name'),
                     const SizedBox(height: 13),
-                    _dialogField(emailController, 'Email address'),
+                    _dialogField(ageController, 'Age'),
                     const SizedBox(height: 13),
-                    _dialogField(phoneController, 'Phone number'),
+                    _dialogField(
+                      numberController,
+                      'Phone number',
+                      isPhone: true,
+                    ),
+                    const SizedBox(height: 13),
+                    _dialogField(weightController, 'Weight'),
                   ],
                 ),
               ),
@@ -893,65 +1027,64 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: () {
                 if (!formKey.currentState!.validate()) return;
 
-                final email = emailController.text.trim();
-
-                final duplicate = customers.any(
-                  (item) =>
-                      item != customer &&
-                      item.email.toLowerCase() == email.toLowerCase(),
+                final updatedClient = Client(
+                  id: client?.id,
+                  name: nameController.text.trim(),
+                  age: ageController.text.trim(),
+                  number: numberController.text.trim(),
+                  weight: weightController.text.trim(),
                 );
-
-                if (duplicate) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('This email already exists.')),
-                  );
-                  return;
-                }
-
-                setState(() {
-                  if (isEditing) {
-                    customer!.name = nameController.text.trim();
-                    customer.email = email;
-                    customer.phone = phoneController.text.trim();
-                  } else {
-                    customers.insert(
-                      0,
-                      Customer(
-                        name: nameController.text.trim(),
-                        email: email,
-                        phone: phoneController.text.trim(),
+                _viewModel.saveClient(updatedClient, existing: client).then((
+                  error,
+                ) {
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                  if (error != null && mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Unable to save client. Please try again.',
+                        ),
                       ),
                     );
-                    addedCustomers++;
                   }
                 });
-
-                Navigator.pop(dialogContext);
               },
-              child: Text(isEditing ? 'Save Changes' : 'Add Customer'),
+              child: Text(isEditing ? 'Save Changes' : 'Add Client'),
             ),
           ],
         );
       },
     ).then((_) {
       nameController.dispose();
-      emailController.dispose();
-      phoneController.dispose();
+      ageController.dispose();
+      numberController.dispose();
+      weightController.dispose();
     });
   }
 
-  Widget _dialogField(TextEditingController controller, String label) {
+  Widget _dialogField(
+    TextEditingController controller,
+    String label, {
+    bool isPhone = false,
+  }) {
     return TextFormField(
       controller: controller,
-      style: const TextStyle(color: nourDark),
+      keyboardType: isPhone ? TextInputType.phone : TextInputType.text,
+      inputFormatters: isPhone
+          ? [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(11),
+            ]
+          : null,
+      maxLength: isPhone ? 11 : null,
+      style: TextStyle(color: nourDark),
       validator: (value) {
-        if (value == null || value.trim().isEmpty) {
+        final input = value?.trim() ?? '';
+        if (input.isEmpty) {
           return '$label is required';
         }
-
-        if (label == 'Email address' &&
-            !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value.trim())) {
-          return 'Enter a valid email';
+        if (isPhone && !RegExp(r'^\d{11}$').hasMatch(input)) {
+          return 'Phone number must be exactly 11 digits';
         }
 
         return null;
@@ -973,17 +1106,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _confirmDelete(Customer customer) {
+  void _confirmDelete(Client client) {
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: Colors.white,
-        title: const Text(
-          'Delete Customer?',
-          style: TextStyle(color: nourDark),
-        ),
+        title: const Text('Delete Client?', style: TextStyle(color: nourDark)),
         content: Text(
-          'Are you sure you want to delete ${customer.name}?',
+          'Are you sure you want to delete ${client.name}?',
           style: const TextStyle(color: nourGreen),
         ),
         actions: [
@@ -992,11 +1122,18 @@ class _HomeScreenState extends State<HomeScreen> {
             child: const Text('Cancel', style: TextStyle(color: nourGreen)),
           ),
           TextButton(
-            onPressed: () {
-              setState(() {
-                customers.remove(customer);
-              });
-              Navigator.pop(dialogContext);
+            onPressed: () async {
+              final error = await _viewModel.deleteClient(client);
+              if (error == null) {
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+              } else {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Unable to delete client. Please try again.'),
+                  ),
+                );
+              }
             },
             child: const Text(
               'Delete',
@@ -1020,7 +1157,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(
         children: [
           _mobileNavItem(Icons.home_rounded, 'Home', 0),
-          _mobileNavItem(Icons.groups_rounded, 'Customers', 1),
+          _mobileNavItem(Icons.groups_rounded, 'Clients', 1),
           _mobileNavItem(Icons.person_outline_rounded, 'Profile', 2),
         ],
       ),
@@ -1028,20 +1165,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _mobileNavItem(IconData icon, String label, int index) {
-    final selected = selectedPage == index;
+    final selected = _viewModel.selectedPage == index;
 
     return Expanded(
       child: InkWell(
         onTap: () {
-          setState(() => selectedPage = index);
-
-          if (index == 2) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Profile screen is not connected yet.'),
-              ),
-            );
-          }
+          _viewModel.selectPage(index);
         },
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

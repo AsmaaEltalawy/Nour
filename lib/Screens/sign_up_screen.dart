@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nour/nour_theme.dart';
-import 'package:nour/services/auth_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:nour/viewmodels/sign_up_view_model.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -12,50 +11,44 @@ class SignUpScreen extends StatefulWidget {
 
 class _SignUpScreenState extends State<SignUpScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-  bool _obscurePassword = true;
-  bool _obscureConfirmation = true;
-  bool _isLoading = false;
+  late final SignUpViewModel _viewModel;
+
+  @override
+  void initState() {
+    super.initState();
+    _viewModel = SignUpViewModel()..addListener(_refresh);
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
+    _viewModel.removeListener(_refresh);
+    _viewModel.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
-    if (!_formKey.currentState!.validate() || _isLoading) return;
+    if (!_formKey.currentState!.validate() || _viewModel.isLoading) return;
 
-    setState(() => _isLoading = true);
-    try {
-      final response = await AuthService.signUp(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-      );
-
-      if (!mounted) return;
-      if (response.session == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Account created. Check your email to confirm it.'),
-          ),
-        );
-        Navigator.of(context).pop();
-      } else {
-        Navigator.of(context).pushReplacementNamed('/home');
-      }
-    } on AuthException catch (error) {
-      if (!mounted) return;
+    final response = await _viewModel.submit();
+    if (!mounted) return;
+    if (_viewModel.errorMessage != null) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+      ).showSnackBar(SnackBar(content: Text(_viewModel.errorMessage!)));
+    } else if (response?.session == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Account created. Check your email to confirm it.'),
+        ),
+      );
+      Navigator.of(context).pop();
+    } else {
+      Navigator.of(context).pushReplacementNamed('/home');
     }
   }
 
@@ -110,7 +103,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     ),
                     const SizedBox(height: 30),
                     _input(
-                      controller: _emailController,
+                      controller: _viewModel.emailController,
                       hint: 'Email address',
                       icon: Icons.mail_outline_rounded,
                       keyboardType: TextInputType.emailAddress,
@@ -118,16 +111,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     ),
                     const SizedBox(height: 16),
                     _input(
-                      controller: _passwordController,
+                      controller: _viewModel.passwordController,
                       hint: 'Password',
                       icon: Icons.lock_outline_rounded,
-                      obscureText: _obscurePassword,
+                      obscureText: _viewModel.obscurePassword,
                       suffix: IconButton(
-                        onPressed: () => setState(
-                          () => _obscurePassword = !_obscurePassword,
-                        ),
+                        onPressed: _viewModel.togglePasswordVisibility,
                         icon: Icon(
-                          _obscurePassword
+                          _viewModel.obscurePassword
                               ? Icons.visibility_outlined
                               : Icons.visibility_off_outlined,
                           color: NourColors.subtitle,
@@ -142,23 +133,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     ),
                     const SizedBox(height: 16),
                     _input(
-                      controller: _confirmPasswordController,
+                      controller: _viewModel.confirmPasswordController,
                       hint: 'Confirm password',
                       icon: Icons.lock_outline_rounded,
-                      obscureText: _obscureConfirmation,
+                      obscureText: _viewModel.obscureConfirmation,
                       suffix: IconButton(
-                        onPressed: () => setState(
-                          () => _obscureConfirmation = !_obscureConfirmation,
-                        ),
+                        onPressed: _viewModel.toggleConfirmationVisibility,
                         icon: Icon(
-                          _obscureConfirmation
+                          _viewModel.obscureConfirmation
                               ? Icons.visibility_outlined
                               : Icons.visibility_off_outlined,
                           color: NourColors.subtitle,
                         ),
                       ),
                       validator: (value) {
-                        if (value != _passwordController.text) {
+                        if (value != _viewModel.passwordController.text) {
                           return 'Passwords do not match.';
                         }
                         return null;
@@ -169,7 +158,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       width: double.infinity,
                       height: NourLayout.buttonHeight,
                       child: ElevatedButton(
-                        onPressed: _isLoading ? null : _submit,
+                        onPressed: _viewModel.isLoading ? null : _submit,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: NourColors.accent,
                           foregroundColor: NourColors.leaf,
@@ -177,7 +166,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             borderRadius: BorderRadius.circular(30),
                           ),
                         ),
-                        child: _isLoading
+                        child: _viewModel.isLoading
                             ? const SizedBox(
                                 width: 23,
                                 height: 23,

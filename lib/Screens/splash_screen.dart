@@ -1,7 +1,5 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:nour/services/auth_service.dart';
-
 import 'login_screen.dart';
 import 'home_screen.dart';
 import '../nour_theme.dart';
@@ -33,7 +31,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   void _openLogin() {
     if (!mounted) return;
-    if (AuthService.currentUser != null) {
+    if (_viewModel.hasAuthenticatedUser) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(builder: (_) => const HomeScreen()),
       );
@@ -42,7 +40,7 @@ class _SplashScreenState extends State<SplashScreen>
     Navigator.of(context).pushReplacement(
       PageRouteBuilder<void>(
         pageBuilder: (context, animation, secondaryAnimation) =>
-            LoginScreen(onSignIn: _signIn),
+            const LoginScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             FadeTransition(
               opacity: CurvedAnimation(
@@ -55,10 +53,6 @@ class _SplashScreenState extends State<SplashScreen>
         reverseTransitionDuration: const Duration(milliseconds: 300),
       ),
     );
-  }
-
-  Future<void> _signIn(String email, String password) async {
-    await AuthService.signIn(email: email, password: password);
   }
 
   @override
